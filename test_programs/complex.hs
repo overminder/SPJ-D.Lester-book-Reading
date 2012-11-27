@@ -1,5 +1,5 @@
 
-main = id 1;
+main = twice twice twice twice id 3;
 
 id x = x;
 
@@ -11,6 +11,5 @@ s f g x = f x (g x);
 
 compose f g x = f (g x);
 
--- apply f twice
 twice f = compose f f;
 

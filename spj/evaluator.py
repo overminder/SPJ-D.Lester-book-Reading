@@ -106,8 +106,16 @@ class State(language.W_Root):
     def ppr(self, p):
         p.writeln('Eval-State')
         with p.block(2):
-            p.writeln('Stack: %s' % [self.heap.lookup(addr)
-                                     for addr in self.stack])
+            p.write('Stack: [')
+            if not self.stack:
+                pass
+            else:
+                first, rest = self.stack[0], self.stack[1:]
+                p.write(self.heap.lookup(first))
+                for addr in rest:
+                    p.write(', ')
+                    p.write(self.heap.lookup(addr))
+            p.writeln(']')
             p.writeln(self.stat)
 
     def eval(self):
