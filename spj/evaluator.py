@@ -1,7 +1,8 @@
 from spj import language
 from spj.errors import InterpError
+from spj.config import CONFIG
 
-class Addr(object):
+class Addr(language.W_Root):
     def __init__(self, ival):
         self.ival = ival
 
@@ -41,6 +42,13 @@ class NInt(Node):
 
     def to_s(self):
         return '#<NInt %d>' % self.ival
+
+class NIndirect(Node):
+    def __init__(self, addr):
+        self.addr = addr
+
+    def to_s(self):
+        return '#<NIndirect %s>' % self.addr.to_s()
 
 class Dump(object):
     pass
@@ -84,6 +92,7 @@ class Stat(language.W_Root):
         self.steps = 0
         self.sc_steps = 0
         self.ap_steps = 0
+        self.indirect_steps = 0
         self.instantiate_count = 0
         self.alloc_count = 0
 
@@ -92,6 +101,7 @@ class Stat(language.W_Root):
         with p.block(2):
             p.writeln('SC Steps = %d' % self.sc_steps)
             p.writeln('Ap Steps = %d' % self.ap_steps)
+            p.writeln('Indirect Steps = %d' % self.indirect_steps)
             p.writeln('Instantiate Count = %d' % self.instantiate_count)
             p.writeln('Alloc Count = %d' % self.alloc_count)
 
@@ -148,6 +158,9 @@ class State(language.W_Root):
         elif isinstance(node, NSupercomb):
             self.sc_step(node.name, node.args, node.body)
             self.stat.sc_steps += 1
+        elif isinstance(node, NIndirect):
+            self.indirect_step(node.addr)
+            self.stat.indirect_steps += 1
         else:
             raise InterpError('State.dispatch: unknown node %s' % node)
 
@@ -159,12 +172,14 @@ class State(language.W_Root):
 
     def sc_step(self, name, args, body):
         arg_bindings = self.get_args(name, args)
+        root = self.stack[-1 - len(args)]
         env = self.extend_env(arg_bindings)
-        result_addr = self.instantiate(body, env)
-        for _ in xrange(len(args) + 1):
-            if self.stack:
-                self.stack.pop() # drop argc + 1 stack items until empty
-        self.stack.append(result_addr)
+        self.instantiate_and_update(body, root, env)
+        for _ in xrange(len(args)):
+            self.stack.pop() # drop sc + (argc - 1) args, leaving root there
+
+    def indirect_step(self, addr):
+        self.stack[-1] = addr
 
     def instantiate(self, body, env):
         self.stat.instantiate_count += 1
@@ -191,7 +206,34 @@ class State(language.W_Root):
             new_env = self.extend_env(bindings, env)
             return self.instantiate(body.expr, new_env)
         else:
-            raise InterpError('Not implemented type: %s' % body)
+            raise InterpError('instantiate: Not implemented: %s' % body)
+
+    def instantiate_and_update(self, body, addr, env):
+        self.stat.instantiate_count += 1
+        if isinstance(body, language.W_EAp):
+            e1, e2 = body.f, body.a
+            a1 = self.instantiate(e1, env)
+            a2 = self.instantiate(e2, env)
+            self.heap.update(addr, NAp(a1, a2))
+        elif isinstance(body, language.W_EInt):
+            self.heap.update(addr, NInt(body.ival))
+        elif isinstance(body, language.W_EVar):
+            try:
+                found = env[body.name]
+            except KeyError:
+                raise InterpError('Undefined name: %s (env.keys=%s)' % (
+                                   body.name, env.keys()))
+            self.heap.update(addr, NIndirect(found))
+        elif isinstance(body, language.W_ELet):
+            bindings = []
+            for (name, expr) in body.defns:
+                addr = self.instantiate(expr, env)
+                bindings.append((name, addr))
+            new_env = self.extend_env(bindings, env)
+            self.instantiate_and_update(body.expr, addr, new_env)
+        else:
+            raise InterpError('instantiate_and_update: Not implemented: %s' %
+                              body)
 
     def get_args(self, name, args):
         # firstly check whether argc is enough
