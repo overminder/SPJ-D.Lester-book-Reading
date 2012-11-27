@@ -100,7 +100,7 @@ class Parser(PackratParser):
         lhs = VARNAME+
         EQUALS
         rhs = expr
-        DEF_BREAK
+        DEF_BREAK+
         return {mk_scdefn(lhs, rhs)};
 
     expr:
@@ -127,7 +127,7 @@ class Parser(PackratParser):
         v0 = VARNAME
         EQUALS
         e0 = expr
-        DEF_BREAK
+        DEF_BREAK+
         return {mk_defn(v0, e0)};
 
     aexpr:

@@ -162,7 +162,8 @@ class State(language.W_Root):
         env = self.extend_env(arg_bindings)
         result_addr = self.instantiate(body, env)
         for _ in xrange(len(args) + 1):
-            self.stack.pop() # drop argc + 1 stack items
+            if self.stack:
+                self.stack.pop() # drop argc + 1 stack items until empty
         self.stack.append(result_addr)
 
     def instantiate(self, body, env):
@@ -180,7 +181,15 @@ class State(language.W_Root):
             try:
                 return env[body.name]
             except KeyError:
-                raise InterpError('Undefined name: %s' % body.name)
+                raise InterpError('Undefined name: %s (env.keys=%s)' % (
+                                   body.name, env.keys()))
+        elif isinstance(body, language.W_ELet):
+            bindings = []
+            for (name, expr) in body.defns:
+                addr = self.instantiate(expr, env)
+                bindings.append((name, addr))
+            new_env = self.extend_env(bindings, env)
+            return self.instantiate(body.expr, new_env)
         else:
             raise InterpError('Not implemented type: %s' % body)
 
@@ -190,10 +199,12 @@ class State(language.W_Root):
             raise InterpError('State.get_args: not enough args for %s.\n'
                               'stack has %d, but need %d' %
                               (name, len(self.stack) - 1, len(args)))
+        nstackargs = len(self.stack) - 1
 
         res = []
         for i, arg in enumerate(args):
-            addr = self.stack[-2 - i] # ignore the top (which is the SC)
+            arg_index = nstackargs - 1 - i
+            addr = self.stack[arg_index] # ignore the top (which is the SC)
             node = self.heap.lookup(addr)
             if isinstance(node, NAp):
                 res.append((arg, node.a2))
@@ -201,8 +212,11 @@ class State(language.W_Root):
                 raise InterpError('State.get_args: not a NAp: %s' % node)
         return res
 
-    def extend_env(self, bindings):
-        env = self.env.copy()
+    def extend_env(self, bindings, env=None):
+        if not env:
+            env = self.env.copy()
+        else:
+            env = env.copy()
         for (name, addr) in bindings:
             env[name] = addr
         return env
