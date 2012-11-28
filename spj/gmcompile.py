@@ -1,8 +1,9 @@
 from pypy.rlib.objectmodel import specialize
 
+from spj.errors import InterpError
 from spj.language import W_Root, W_EVar, W_EInt, W_EAp
 from spj.gmachine import (State, datHeap, Stat, NGlobal, Pushglobal, Unwind,
-        Slide, Pushint, Mkap, Push)
+        Slide, Pushint, Mkap, Push, Pop, Update)
 
 mkap = Mkap()
 unwind = Unwind()
@@ -30,6 +31,7 @@ class SCCompiler(object):
         self.sc_defn = sc_defn
 
     def make_sc_node(self):
+        print self.sc_defn, self.code
         return NGlobal(self.sc_defn.name,
                        len(self.sc_defn.args),
                        self.code)
@@ -45,7 +47,8 @@ class SCCompiler(object):
 
     def compile_r(self, expr, local_env):
         self.compile_c(expr, local_env)
-        self.emit(Slide(len(local_env) + 1))
+        self.emit(Update(len(local_env)))
+        self.emit(Pop(len(local_env)))
         self.emit(unwind)
 
     def compile_c(self, expr, local_env):
@@ -60,6 +63,8 @@ class SCCompiler(object):
             self.compile_c(expr.a, local_env)
             self.compile_c(expr.f, arg_offset(1, local_env))
             self.emit(mkap)
+        else:
+            raise InterpError('compile_c(%s) not implemented' % expr.to_s())
 
 def arg_offset(i, env):
     d = {}

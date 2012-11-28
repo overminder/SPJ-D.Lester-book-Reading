@@ -9,7 +9,7 @@ class Addr(W_Root):
         return self.node
 
     def to_s(self):
-        return '#<Addr -> %s>' % self.node
+        return '#<Addr -> %s>' % self.node.to_s()
 
 class Heap(object):
     def __init__(self):
@@ -35,6 +35,8 @@ class Stat(W_Root):
         self.instr_count = 0
         self.ncalls = 0
         self.nkpushes = 0
+        self.npops = 0
+        self.nupdates = 0
 
     def to_s(self):
         return '#<GmStat>'
@@ -42,8 +44,10 @@ class Stat(W_Root):
     def ppr(self, p):
         p.writeln('#<GmState %d>' % self.instr_count)
         with p.block(2):
-            p.writeln('N calls = %d' % self.ncalls)
-            p.writeln('N constant pushes = %d' % self.nkpushes)
+            p.writeln('calls = %d' % self.ncalls)
+            p.writeln('constant pushes = %d' % self.nkpushes)
+            p.writeln('pops = %d' % self.npops)
+            p.writeln('updates = %d' % self.nupdates)
 
 class State(W_Root):
     def __init__(self, code, stack, heap, env, stat):
@@ -53,17 +57,25 @@ class State(W_Root):
         self.heap = heap
         self.env = env
         self.stat = stat
+        self.curr_sc_name = '(nosc)'
 
     def to_s(self):
         return '#<GmState>'
 
     def ppr(self, p):
-        p.writeln('GmState')
+        try:
+            instr = self.code[self.pc].to_s()
+        except IndexError:
+            instr = '(done)'
+        p.writeln('GmState @%s %s' % (self.curr_sc_name, instr))
+        p.writeln('Stack: [%s]' % ', '.join([
+            self.heap.lookup(a).to_s() for a in self.stack]))
         with p.block(2):
-            p.write(self.stat)
+            p.writeln(self.stat)
 
     def eval(self):
         while not self.is_final():
+            ppr(self)
             self.step()
         ppr(self)
         return self.stack[-1]
@@ -108,6 +120,10 @@ class Unwind(Instr):
             state.stat.ncalls += 1
             state.code = top.code
             state.pc = 0
+            state.curr_sc_name = top.name
+        elif isinstance(top, NIndirect):
+            state.pc -= 1
+            state.stack[-1] = top.addr
         else:
             raise InterpError('%s: node %s not implemented' %
                               (self.to_s(), top.to_s()))
@@ -152,6 +168,31 @@ class Push(Instr):
         ap_node = state.heap.lookup(ap_addr)
         assert isinstance(ap_node, NAp)
         state.stack.append(ap_node.a2)
+
+class Pop(Instr):
+    def __init__(self, howmany):
+        self.howmany = howmany
+
+    def to_s(self):
+        return '#<Instr:Pop %d>' % self.howmany
+
+    def dispatch(self, state):
+        state.stat.npops += 1
+        slice_to = len(state.stack) - self.howmany
+        assert slice_to >= 0
+        state.stack = state.stack[:slice_to]
+
+class Update(Instr):
+    def __init__(self, index):
+        self.index = index
+
+    def to_s(self):
+        return '#<Instr:Update %d>' % self.index
+
+    def dispatch(self, state):
+        state.stat.nupdates += 1
+        top = state.stack.pop()
+        state.heap.update(state.stack[-self.index - 1], NIndirect(top))
 
 class Mkap(Instr):
     def to_s(self):
@@ -206,4 +247,10 @@ class NGlobal(Node):
     def to_s(self):
         return '#<GmGlobal %s>' % self.name
 
+class NIndirect(Node):
+    def __init__(self, addr):
+        self.addr = addr
+
+    def to_s(self):
+        return '#<GmIndirect -> %s>' % self.addr.to_s()
 

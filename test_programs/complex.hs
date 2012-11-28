@@ -1,5 +1,5 @@
 
-main = twice twice twice twice id 3;
+main = twice id 3;
 
 id x = x;
 
