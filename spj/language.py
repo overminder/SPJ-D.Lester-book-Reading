@@ -113,6 +113,17 @@ class W_ELet(W_Expr):
         p.write(self.expr)
         p.dedent(4)
 
+class W_EConstr(W_Expr):
+    def __init__(self, tag, arity):
+        self.tag = tag
+        self.arity = arity
+
+    def to_s(self):
+        return '#<W_EConstr {%d, %d}>' % (self.tag, self.arity)
+
+    def ppr(self, p):
+        p.write('Pack{%d, %d}' % (self.tag, self.arity))
+
 # ppr
 class PrettyPrinter(object):
     def __init__(self, stream):

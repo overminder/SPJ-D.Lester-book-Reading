@@ -2,6 +2,10 @@ from spj import language
 from pypy.rlib.parsing.makepackrat import (PackratParser, BacktrackException,
         Status)
 
+def ensure_int(s):
+    assert s
+    return boxed_int(int(s))
+
 def mk_scdefn(lhs, rhs):
     (name, args) = lhs[0], lhs[1:]
     return language.W_ScDefn(name, args, rhs)
@@ -9,9 +13,7 @@ def mk_scdefn(lhs, rhs):
 def mk_var(v):
     return language.W_EVar(v)
 
-def mk_int(istr):
-    assert istr is not None
-    i = int(istr)
+def mk_int(i):
     return language.W_EInt(i)
 
 def mk_ap(f, a):
@@ -29,6 +31,9 @@ def mk_primop(op):
 def mk_let(defns, e):
     defns_unpacked = [defn.unpack() for defn in defns]
     return language.W_ELet(defns_unpacked, e)
+
+def mk_constr(tag, arity):
+    return language.W_EConstr(tag, arity)
 
 def mk_lambda(lhs, rhs):
     raise NotImplementedError
@@ -51,6 +56,10 @@ class Parser(PackratParser):
     EQUALS:
         IGNORE*
         `=`;
+
+    COMMA:
+        IGNORE*
+        `,`;
 
     DEF_BREAK:
         IGNORE*
@@ -76,6 +85,10 @@ class Parser(PackratParser):
         IGNORE*
         '\';
 
+    PACK:
+        IGNORE*
+        `Pack`;
+
     ARROW:
         IGNORE*
         `->`;
@@ -86,7 +99,8 @@ class Parser(PackratParser):
 
     INT:
         IGNORE*
-        `[0-9]+`;
+        s = `[0-9]+`
+        return {ensure_int(s)};
 
     LPAREN:
         IGNORE*
@@ -95,6 +109,14 @@ class Parser(PackratParser):
     RPAREN:
         IGNORE*
         ')';
+
+    LBRACE:
+        IGNORE*
+        '{';
+
+    RBRACE:
+        IGNORE*
+        '}';
 
     scdefn:
         lhs = VARNAME+
@@ -134,14 +156,21 @@ class Parser(PackratParser):
         v = VARNAME
         return {mk_var(v)}
       | n = INT
-        return {mk_int(n)}
+        return {mk_int(n.as_int())}
+      | PACK
+        LBRACE
+        tag = INT
+        COMMA
+        arity = INT
+        RBRACE
+        return {mk_constr(tag.as_int(), arity.as_int())}
       | LPAREN
         e = expr
         RPAREN
         return {e};
 
     binop:
-        arithop | relop | boolop;
+        relop | arithop | boolop;
 
     arithop:
         IGNORE* '+'
@@ -150,8 +179,8 @@ class Parser(PackratParser):
       | IGNORE* '/';
 
     relop:
-        IGNORE* '<'
-      | IGNORE* '<='
+        IGNORE* '<='
+      | IGNORE* '<'
       | IGNORE* '=='
       | IGNORE* '/='
       | IGNORE* '>='
@@ -184,3 +213,10 @@ class pair(object):
     def unpack(self):
         return self.x, self.y
 
+# Another workaround
+class boxed_int(object):
+    def __init__(self, ival):
+        self.ival = ival
+
+    def as_int(self):
+        return self.ival

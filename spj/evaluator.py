@@ -65,6 +65,9 @@ class NData(Node):
     def to_s(self):
         return '#<NData %d>' % self.tag
 
+    def is_data(self):
+        return True
+
 class Dump(object):
     def __init__(self):
         self.saved_stacks = []
@@ -140,6 +143,12 @@ class Stat(language.W_Root):
             p.writeln('Dump push/pops = %d/%d' %
                       (self.dump_pushes, self.dump_pops))
 
+class StateStore(object):
+    def __init__(self):
+        self.last_state = None
+
+store = StateStore()
+
 class State(language.W_Root):
     def __init__(self, stack, dump, heap, env):
         self.stack = stack
@@ -147,6 +156,8 @@ class State(language.W_Root):
         self.heap = heap
         self.env = env
         self.stat = Stat()
+        # XXX hack
+        store.last_state = self
 
     def ppr(self, p):
         p.writeln('Eval-State')
@@ -165,7 +176,6 @@ class State(language.W_Root):
 
     def eval(self):
         while not self.is_final():
-            language.ppr(self)
             self.step()
         language.ppr(self)
         return self.heap.lookup(self.stack[-1])
@@ -186,7 +196,9 @@ class State(language.W_Root):
 
     def dispatch(self, node):
         if isinstance(node, NInt):
-            self.num_step(node.ival)
+            self.int_step(node.ival)
+        elif isinstance(node, NData):
+            self.data_step(node.tag, node.components)
         elif isinstance(node, NAp):
             self.ap_step(node.a1, node.a2)
             self.stat.ap_steps += 1
@@ -202,15 +214,22 @@ class State(language.W_Root):
         else:
             raise InterpError('State.dispatch: unknown node %s' % node)
 
-    def num_step(self, ival):
+    def int_step(self, ival):
         if len(self.stack) == 1 and self.dump.is_not_empty():
-            # ...and
-            if isinstance(self.heap.lookup(self.stack[-1]), NInt):
-                self.stat.dump_pops += 1
-                self.stack = self.dump.pop()
-                return
+            self.stat.dump_pops += 1
+            self.stack = self.dump.pop()
+            return
         # Otherwise
         raise InterpError('State.num_step: number applied as a function!')
+
+    def data_step(self, tag, arity):
+        # Very similar.
+        if len(self.stack) == 1 and self.dump.is_not_empty():
+            self.stat.dump_pops += 1
+            self.stack = self.dump.pop()
+            return
+        # Otherwise
+        raise InterpError('State.data_step: data applied as a function!')
 
     def ap_step(self, a1, a2):
         self.stack.append(a1)
@@ -272,6 +291,10 @@ class State(language.W_Root):
                 bindings.append((name, addr))
             new_env = self.extend_env(bindings, env)
             return self.instantiate(body.expr, new_env)
+        elif isinstance(body, language.W_EConstr):
+            from spj.primitive import PrimConstr
+            node = NPrim(PrimConstr(body.tag, body.arity))
+            return self.heap.alloc(node)
         else:
             raise InterpError('instantiate: Not implemented: %s' % body)
 
@@ -298,6 +321,10 @@ class State(language.W_Root):
                 bindings.append((name, addr))
             new_env = self.extend_env(bindings, env)
             self.instantiate_and_update(body.expr, addr, new_env)
+        elif isinstance(body, language.W_EConstr):
+            from spj.primitive import PrimConstr
+            node = NPrim(PrimConstr(body.tag, body.arity))
+            self.heap.update(addr, node)
         else:
             raise InterpError('instantiate_and_update: Not implemented: %s' %
                               body)

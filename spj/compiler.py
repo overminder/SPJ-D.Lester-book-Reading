@@ -27,5 +27,18 @@ def build_initial_heap(sc_defs):
     #
     return (heap, env)
 
-prelude_defs = []
+prelude = '''
+false = Pack{1, 0};
+true = Pack{2, 0};
+
+cons = Pack{1, 2};
+nil = Pack{2, 0};
+
+compose f g x = f (g x);
+
+id x = x;
+'''
+
+from spj.parser import read_program
+prelude_defs = read_program(prelude)
 
