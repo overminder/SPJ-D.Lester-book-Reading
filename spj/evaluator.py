@@ -57,6 +57,14 @@ class NPrim(Node):
     def to_s(self):
         return '#<NPrim %s>' % self.prim_func.name
 
+class NData(Node):
+    def __init__(self, tag, components):
+        self.tag = tag
+        self.components = components
+
+    def to_s(self):
+        return '#<NData %d>' % self.tag
+
 class Dump(object):
     def __init__(self):
         self.saved_stacks = []
@@ -222,13 +230,13 @@ class State(language.W_Root):
         argpairs = self.get_args(prim_func.name, ['unused'] * prim_func.arity)
         arg_addrs = [addr for (unused, addr) in argpairs]
         arg_nodes = []
-        for arg_addr in arg_addrs:
+        for i, arg_addr in enumerate(arg_addrs):
             arg_node = self.heap.lookup(arg_addr)
             if isinstance(arg_node, NIndirect):
                 arg_addr = arg_node.addr
                 arg_node = self.heap.lookup(arg_node.addr)
             #            
-            if not arg_node.is_data():
+            if prim_func.strictargs[i] and not arg_node.is_data():
                 self.stat.dump_pushes += 1
                 self.dump.push(self.stack)
                 self.stack = [arg_addr]
