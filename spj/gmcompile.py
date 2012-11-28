@@ -1,9 +1,9 @@
 from pypy.rlib.objectmodel import specialize
 
 from spj.errors import InterpError
-from spj.language import W_Root, W_EVar, W_EInt, W_EAp
+from spj.language import W_Root, W_EVar, W_EInt, W_EAp, W_ELet
 from spj.gmachine import (State, datHeap, Stat, NGlobal, Pushglobal, Unwind,
-        Slide, Pushint, Mkap, Push, Pop, Update)
+        Slide, Pushint, Mkap, Push, Pop, Update, Alloc)
 
 mkap = Mkap()
 unwind = Unwind()
@@ -63,6 +63,27 @@ class SCCompiler(object):
             self.compile_c(expr.a, local_env)
             self.compile_c(expr.f, arg_offset(1, local_env))
             self.emit(mkap)
+        elif isinstance(expr, W_ELet):
+            ndefns = len(expr.defns)
+            let_env = local_env
+            if expr.isrec:
+                self.emit(Alloc(ndefns))
+                let_env = arg_offset(ndefns, let_env)
+                for i, (name, form) in enumerate(expr.defns):
+                    let_env[name] = ndefns - i - 1
+                for i, (name, form) in enumerate(expr.defns):
+                    self.compile_c(form, let_env)
+                    self.emit(Update(ndefns - i - 1))
+            else:
+                for (name, form) in expr.defns:
+                    self.compile_c(form, local_env)
+                    local_env = arg_offset(1, local_env)
+                let_env = arg_offset(ndefns, let_env)
+                for i, (name, form) in enumerate(expr.defns):
+                    let_env[name] = ndefns - i - 1
+            # Finally
+            self.compile_c(expr.expr, let_env)
+            self.emit(Slide(ndefns))
         else:
             raise InterpError('compile_c(%s) not implemented' % expr.to_s())
 

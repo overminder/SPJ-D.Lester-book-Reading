@@ -11,6 +11,8 @@ class Addr(W_Root):
     def to_s(self):
         return '#<Addr -> %s>' % self.node.to_s()
 
+null_addr = None
+
 class Heap(object):
     def __init__(self):
         pass
@@ -238,6 +240,18 @@ class Slide(Instr):
         state.stack = state.stack[:slice_to]
         state.stack.append(top)
 
+class Alloc(Instr):
+    def __init__(self, howmany):
+        self.howmany = howmany
+
+    def to_s(self):
+        return '#<Instr:Alloc %d>' % self.howmany
+
+    def dispatch(self, state):
+        for _ in range(self.howmany):
+            addr = state.heap.alloc(null_node)
+            state.stack.append(addr)
+
 # G-machine nodes
 class Node(W_Root):
     def to_s(self):
@@ -272,8 +286,12 @@ class NIndirect(Node):
         self.addr = addr
 
     def to_s(self):
-        if self.addr.deref() is self:
+        if not self.addr:
+            return '#<GmIndirect (nil)>'
+        elif self.addr.deref() is self:
             return '#<GmIndirect (loop)>'
         else:
             return '#<GmIndirect -> %s>' % self.addr.to_s()
+
+null_node = NIndirect(null_addr)
 

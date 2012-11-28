@@ -80,38 +80,39 @@ class W_EPrimOp(W_EVar):
         p.write('(%s)' % self.name)
 
 class W_ELet(W_Expr):
-    def __init__(self, defns, expr):
+    def __init__(self, defns, expr, isrec=False):
         self.defns = defns
         self.expr = expr
+        self.isrec = isrec
 
     def to_s(self):
         buf = []
         for (name, e) in self.defns:
             buf.append('%s = %s' % (name, e))
-        return '#<ELet [%s] %s>' % ('; '.join(buf), self.expr)
+        recstr = 'rec' if self.isrec else ''
+        return '#<ELet%s [%s] %s>' % (recstr, '; '.join(buf), self.expr)
 
     def ppr(self, p):
-        p.write('let ')
-        p.indent(4)
-
-        first, rest = self.defns[0], self.defns[1:]
-        (name, expr) = first
-        p.write(name)
-        p.write(' = ')
-        p.write(expr)
-        p.writeln(';')
-
-        for (name, expr) in rest:
+        recstr = 'let' + ('rec' if self.isrec else '') + ' '
+        p.write(recstr)
+        with p.block(len(recstr)):
+            first, rest = self.defns[0], self.defns[1:]
+            (name, expr) = first
             p.write(name)
             p.write(' = ')
             p.write(expr)
             p.writeln(';')
 
-        p.dedent(3)
-        p.write('in ')
-        p.indent(3)
-        p.write(self.expr)
-        p.dedent(4)
+            for (name, expr) in rest:
+                p.write(name)
+                p.write(' = ')
+                p.write(expr)
+                p.writeln(';')
+
+            p.dedent(3)
+            p.write('in ')
+            p.indent(3)
+            p.write(self.expr)
 
 class W_EConstr(W_Expr):
     def __init__(self, tag, arity):

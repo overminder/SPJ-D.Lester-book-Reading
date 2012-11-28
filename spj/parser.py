@@ -28,9 +28,9 @@ def mk_binaryop(op, lhs, rhs):
 def mk_primop(op):
     return language.W_EPrimOp(op)
 
-def mk_let(defns, e):
+def mk_let(defns, e, isrec):
     defns_unpacked = [defn.unpack() for defn in defns]
-    return language.W_ELet(defns_unpacked, e)
+    return language.W_ELet(defns_unpacked, e, isrec)
 
 def mk_constr(tag, arity):
     return language.W_EConstr(tag, arity)
@@ -68,6 +68,10 @@ class Parser(PackratParser):
     LET:
         IGNORE*
         `let`;
+
+    LETREC:
+        IGNORE*
+        `letrec`;
 
     IN:
         IGNORE*
@@ -133,11 +137,16 @@ class Parser(PackratParser):
         op = binop
         e2 = expr
         return {mk_binaryop(op, e1, e2)}
+      | LETREC
+        defn_list = defn+
+        IN
+        e0 = expr
+        return {mk_let(defn_list, e0, True)}
       | LET
         defn_list = defn+
         IN
         e0 = expr
-        return {mk_let(defn_list, e0)}
+        return {mk_let(defn_list, e0, False)}
       | LAMBDA
         lhs = VARNAME+
         ARROW
