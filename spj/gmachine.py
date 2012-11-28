@@ -35,6 +35,7 @@ class Stat(W_Root):
         self.instr_count = 0
         self.ncalls = 0
         self.nkpushes = 0
+        self.nvpushes = 0
         self.npops = 0
         self.nupdates = 0
 
@@ -46,6 +47,7 @@ class Stat(W_Root):
         with p.block(2):
             p.writeln('calls = %d' % self.ncalls)
             p.writeln('constant pushes = %d' % self.nkpushes)
+            p.writeln('variable pushes = %d' % self.nvpushes)
             p.writeln('pops = %d' % self.npops)
             p.writeln('updates = %d' % self.nupdates)
 
@@ -114,9 +116,17 @@ class Unwind(Instr):
             if len(state.stack) - 1 < top.arity:
                 raise InterpError('%s: not enough args for %s' %
                                   (self.to_s(), top.to_s()))
-            # If prim:
-            #    state.dump.append((state.pc, state.code, state.stack))
-            # Enter that code
+            # Prepare args and enter the new code
+            args = take_right(state.stack[:-1], top.arity)
+            for i, addr in enumerate(args):
+                addr = args[i]
+                ap_node = state.heap.lookup(addr)
+                assert isinstance(ap_node, NAp)
+                args[i] = ap_node.a2
+
+            rest = drop_right(state.stack, top.arity)
+            state.stack = rest + args
+
             state.stat.ncalls += 1
             state.code = top.code
             state.pc = 0
@@ -125,8 +135,19 @@ class Unwind(Instr):
             state.pc -= 1
             state.stack[-1] = top.addr
         else:
-            raise InterpError('%s: node %s not implemented' %
-                              (self.to_s(), top.to_s()))
+            raise InterpError('%s: node %s not implemented' % (
+                self.to_s(), top.to_s()))
+#
+
+def drop_right(lis, n):
+    slice_to = len(lis) - n
+    assert slice_to >= 0
+    return lis[:slice_to]
+
+def take_right(lis, n):
+    slice_from = len(lis) - n
+    assert slice_from >= 0
+    return lis[slice_from:]
 
 class Pushglobal(Instr):
     def __init__(self, name):
@@ -163,11 +184,9 @@ class Push(Instr):
         return '#<Instr:Push %d>' % self.index
 
     def dispatch(self, state):
-        state.stat.nkpushes += 1
-        ap_addr = state.stack[-self.index - 2]
-        ap_node = state.heap.lookup(ap_addr)
-        assert isinstance(ap_node, NAp)
-        state.stack.append(ap_node.a2)
+        state.stat.nvpushes += 1
+        addr = state.stack[-self.index - 1]
+        state.stack.append(addr)
 
 class Pop(Instr):
     def __init__(self, howmany):
@@ -192,6 +211,7 @@ class Update(Instr):
     def dispatch(self, state):
         state.stat.nupdates += 1
         top = state.stack.pop()
+        #assert state.stack[-self.index - 1] is not top
         state.heap.update(state.stack[-self.index - 1], NIndirect(top))
 
 class Mkap(Instr):
@@ -252,5 +272,8 @@ class NIndirect(Node):
         self.addr = addr
 
     def to_s(self):
-        return '#<GmIndirect -> %s>' % self.addr.to_s()
+        if self.addr.deref() is self:
+            return '#<GmIndirect (loop)>'
+        else:
+            return '#<GmIndirect -> %s>' % self.addr.to_s()
 
