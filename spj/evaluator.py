@@ -50,8 +50,28 @@ class NIndirect(Node):
     def to_s(self):
         return '#<NIndirect %s>' % self.addr.to_s()
 
+class NPrim(Node):
+    def __init__(self, prim_func):
+        self.prim_func = prim_func
+
+    def to_s(self):
+        return '#<NPrim %s>' % self.prim_func.name
+
 class Dump(object):
-    pass
+    def __init__(self):
+        self.saved_stacks = []
+
+    def push(self, stack):
+        self.saved_stacks.append(stack)
+
+    def pop(self):
+        return self.saved_stacks.pop()
+
+    def is_not_empty(self):
+        return not self.is_empty()
+
+    def is_empty(self):
+        return len(self.saved_stacks) == 0
 
 class Heap(object):
     def __init__(self):
@@ -76,6 +96,7 @@ class Heap(object):
             raise InterpError('Heap.free: no such addr %s' % addr)
 
     def lookup(self, addr):
+        assert isinstance(addr, Addr)
         try:
             return self.addr_map[addr]
         except KeyError:
@@ -93,8 +114,11 @@ class Stat(language.W_Root):
         self.sc_steps = 0
         self.ap_steps = 0
         self.indirect_steps = 0
+        self.prim_steps = 0
         self.instantiate_count = 0
         self.alloc_count = 0
+        self.dump_pushes = 0
+        self.dump_pops = 0
 
     def ppr(self, p):
         p.writeln('#<Stat #%d>' % self.steps)
@@ -102,8 +126,11 @@ class Stat(language.W_Root):
             p.writeln('SC Steps = %d' % self.sc_steps)
             p.writeln('Ap Steps = %d' % self.ap_steps)
             p.writeln('Indirect Steps = %d' % self.indirect_steps)
+            p.writeln('Prim Steps = %d' % self.prim_steps)
             p.writeln('Instantiate Count = %d' % self.instantiate_count)
             p.writeln('Alloc Count = %d' % self.alloc_count)
+            p.writeln('Dump push/pops = %d/%d' %
+                      (self.dump_pushes, self.dump_pops))
 
 class State(language.W_Root):
     def __init__(self, stack, dump, heap, env):
@@ -136,7 +163,7 @@ class State(language.W_Root):
         return self.heap.lookup(self.stack[-1])
 
     def is_final(self):
-        if len(self.stack) == 1:
+        if len(self.stack) == 1 and self.dump.is_empty():
             return self.heap.lookup(self.stack[-1]).is_data()
         elif len(self.stack) == 0:
             raise InterpError('State.is_final: empty stack!')
@@ -161,10 +188,20 @@ class State(language.W_Root):
         elif isinstance(node, NIndirect):
             self.indirect_step(node.addr)
             self.stat.indirect_steps += 1
+        elif isinstance(node, NPrim):
+            self.prim_step(node.prim_func)
+            self.stat.prim_steps += 1
         else:
             raise InterpError('State.dispatch: unknown node %s' % node)
 
     def num_step(self, ival):
+        if len(self.stack) == 1 and self.dump.is_not_empty():
+            # ...and
+            if isinstance(self.heap.lookup(self.stack[-1]), NInt):
+                self.stat.dump_pops += 1
+                self.stack = self.dump.pop()
+                return
+        # Otherwise
         raise InterpError('State.num_step: number applied as a function!')
 
     def ap_step(self, a1, a2):
@@ -180,6 +217,28 @@ class State(language.W_Root):
 
     def indirect_step(self, addr):
         self.stack[-1] = addr
+
+    def prim_step(self, prim_func):
+        argpairs = self.get_args(prim_func.name, ['unused'] * prim_func.arity)
+        arg_addrs = [addr for (unused, addr) in argpairs]
+        arg_nodes = []
+        for arg_addr in arg_addrs:
+            arg_node = self.heap.lookup(arg_addr)
+            if isinstance(arg_node, NIndirect):
+                arg_addr = arg_node.addr
+                arg_node = self.heap.lookup(arg_node.addr)
+            #            
+            if not arg_node.is_data():
+                self.stat.dump_pushes += 1
+                self.dump.push(self.stack)
+                self.stack = [arg_addr]
+                return
+            arg_nodes.append(arg_node)
+        # Call the interp-level prim func here
+        for _ in arg_addrs:
+            self.stack.pop() # remove the prim and (argc - 1) args
+        result_node = prim_func.call(arg_nodes)
+        self.heap.update(self.stack[-1], result_node)
 
     def instantiate(self, body, env):
         self.stat.instantiate_count += 1

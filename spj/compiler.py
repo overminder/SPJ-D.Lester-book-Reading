@@ -1,6 +1,6 @@
 #class Stack(list): pass
 from spj.errors import InterpError
-from spj.evaluator import State, Heap, Dump, NSupercomb
+from spj.evaluator import State, Heap, Dump, NSupercomb, NPrim
 
 def compile(program):
     sc_defs = program + prelude_defs
@@ -15,9 +15,16 @@ def compile(program):
 def build_initial_heap(sc_defs):
     heap = Heap()
     env = {}
+    # populate SCs
     for sc_def in sc_defs:
         node = NSupercomb(sc_def.name, sc_def.args, sc_def.body)
         env[sc_def.name] = heap.alloc(node)
+    # populate primitives
+    from spj import primitive
+    for name, prim_func in primitive.module.functions.items():
+        node = NPrim(prim_func)
+        env[name] = heap.alloc(node)
+    #
     return (heap, env)
 
 prelude_defs = []

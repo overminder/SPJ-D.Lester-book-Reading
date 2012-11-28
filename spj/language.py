@@ -68,9 +68,10 @@ class W_EAp(W_Expr):
         p.write(' ')
         p.write(self.a)
 
-class W_EPrimOp(W_Expr):
+# Just another var.
+class W_EPrimOp(W_EVar):
     def __init__(self, name):
-        self.name = name
+        W_EVar.__init__(self, name)
 
     def to_s(self):
         return '#<EPrimOp (%s)>' % self.name
