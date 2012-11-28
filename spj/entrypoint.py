@@ -1,7 +1,7 @@
 from pypy.rlib.streamio import fdopen_as_stream
 from spj.parser import read_program
 from spj.language import ppr
-from spj.compiler import compile
+from spj.gmcompile import compile
 from spj.errors import InterpError
 
 def main(argv):
@@ -13,6 +13,8 @@ def main(argv):
         result = code.eval()
     except InterpError as e:
         print e.what
+        return 1
 
+    print result
     return 0
 
