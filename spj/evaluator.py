@@ -3,11 +3,14 @@ from spj.errors import InterpError
 from spj.config import CONFIG
 
 class Addr(language.W_Root):
-    def __init__(self, ival):
-        self.ival = ival
+    def __init__(self, node):
+        self.node = node
+
+    def deref(self):
+        return self.node
 
     def to_s(self):
-        return '#%d' % self.ival
+        return '#<Addr -> %s>' % self.node
 
 class Node(language.W_Root):
     def to_s(self):
@@ -86,38 +89,22 @@ class Dump(object):
 
 class Heap(object):
     def __init__(self):
-        self.next_addr = 1
-        self.free_list = []
-        self.addr_map = {}
+        pass
 
     def alloc(self, node):
-        if self.free_list:
-            addr = self.free_list.pop()
-        else:
-            addr = Addr(self.next_addr)
-            self.next_addr += 1
-        self.addr_map[addr] = node
-        return addr
+        return Addr(node)
 
     def free(self, addr):
-        if addr in self.addr_map:
-            del self.addr_map[addr]
-            self.free_list.append(addr)
-        else:
-            raise InterpError('Heap.free: no such addr %s' % addr)
+        pass
 
     def lookup(self, addr):
         assert isinstance(addr, Addr)
-        try:
-            return self.addr_map[addr]
-        except KeyError:
-            raise InterpError('Heap.lookup: no such addr %s' % addr)
+        return addr.deref()
 
     def update(self, addr, node):
-        if addr in self.addr_map:
-            self.addr_map[addr] = node
-        else:
-            raise InterpError('Heap.update: no such addr %s' % addr)
+        addr.node = node
+
+datHeap = Heap()
 
 class Stat(language.W_Root):
     def __init__(self):
@@ -143,12 +130,6 @@ class Stat(language.W_Root):
             p.writeln('Dump push/pops = %d/%d' %
                       (self.dump_pushes, self.dump_pops))
 
-class StateStore(object):
-    def __init__(self):
-        self.last_state = None
-
-store = StateStore()
-
 class State(language.W_Root):
     def __init__(self, stack, dump, heap, env):
         self.stack = stack
@@ -156,8 +137,6 @@ class State(language.W_Root):
         self.heap = heap
         self.env = env
         self.stat = Stat()
-        # XXX hack
-        store.last_state = self
 
     def ppr(self, p):
         p.writeln('Eval-State')

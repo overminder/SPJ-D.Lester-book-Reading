@@ -1,6 +1,6 @@
 #class Stack(list): pass
 from spj.errors import InterpError
-from spj.evaluator import State, Heap, Dump, NSupercomb, NPrim
+from spj.evaluator import State, datHeap, Dump, NSupercomb, NPrim
 
 def compile(program):
     sc_defs = program + prelude_defs
@@ -13,7 +13,7 @@ def compile(program):
     return State(initial_stack, Dump(), initial_heap, env)
 
 def build_initial_heap(sc_defs):
-    heap = Heap()
+    heap = datHeap
     env = {}
     # populate SCs
     for sc_def in sc_defs:

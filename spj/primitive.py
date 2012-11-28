@@ -139,11 +139,10 @@ def case_pair(p, if_cons, if_nil):
     if p.tag == 2: # nil
         return if_nil
     elif p.tag == 1: # pair
-        from spj.evaluator import store
-        vm = store.last_state # XXX hack
-        a0 = vm.heap.alloc(if_cons)
-        a1 = vm.heap.alloc(NAp(a0, vm.heap.alloc(p.components[0])))
-        return NAp(a1, vm.heap.alloc(p.components[1]))
+        from spj.evaluator import datHeap
+        a0 = datHeap.alloc(if_cons)
+        a1 = datHeap.alloc(NAp(a0, datHeap.alloc(p.components[0])))
+        return NAp(a1, datHeap.alloc(p.components[1]))
     else:
         raise InterpError('casePair: tag out of range (%d)' % p.tag)
 
