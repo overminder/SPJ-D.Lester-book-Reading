@@ -1,4 +1,5 @@
 from pypy.rlib.streamio import fdopen_as_stream
+
 from spj.parser import read_program
 from spj.language import ppr
 from spj.gmcompile import compile

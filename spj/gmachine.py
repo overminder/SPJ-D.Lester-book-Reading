@@ -91,7 +91,7 @@ class State(W_Root):
             node = self.heap.lookup(addr)
             if i != 0: # not the first
                 p.write(', ')
-            p.write(node)
+            p.write(node.to_s())
         p.writeln(']')
         #
         s = 'Dump: {'
@@ -109,7 +109,7 @@ class State(W_Root):
                     p.write('[], ')
                 p.write('Stack: ')
                 if stack:
-                    p.write(stack[-1])
+                    p.write(stack[-1].to_s())
                     p.write('...')
                 else:
                     p.write('[]')
@@ -124,7 +124,7 @@ class State(W_Root):
         while not self.is_final():
             #ppr(self)
             self.step()
-        #ppr(self)
+        ppr(self)
         return self._stack[-1]
 
     def is_final(self):
@@ -317,10 +317,11 @@ class Eval(Instr):
 
 class BasePrimOp(Instr):
     def dispatch(self, state):
+        # stack[..., argnode3, argnode2, argnode1] -> stack[..., result]
         if not self.has_enough_args(state):
             raise InterpError('%s: not enough arguments' % self.to_s())
         arity = self.get_arity()
-        args_w = [] # :: [Node]
+        args_w = [] # :: [argnode1, argnode2, argnode3]
         for _ in xrange(arity):
             args_w.append(state.heap.lookup(state.stack_pop()))
         self.call(state, args_w)
@@ -388,6 +389,13 @@ class NGlobal(Node):
 
     def to_s(self):
         return '#<GmGlobal %s>' % self.name
+
+    def ppr(self, p):
+        p.writeln('#<GmGlobal %s arity=%d>' % (self.name, self.arity))
+        with p.block(2):
+            p.write('Code: ')
+            p.writeln(self.code)
+
 
 class NIndirect(Node):
     def __init__(self, addr):

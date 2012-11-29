@@ -1,4 +1,4 @@
-main = 1 + 2 + 3;
+main = 2 - 1;
 
 add x y = x + y;
 

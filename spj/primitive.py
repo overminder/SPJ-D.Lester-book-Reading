@@ -20,6 +20,7 @@ class PrimOpManager(object):
         self.scs[name] = sc
 
 def mk_prim_op(name, func, argtypes):
+    "NOT_RPYTHON"
     func._always_inline_ = True
     arity = len(argtypes)
     #
@@ -39,7 +40,7 @@ def mk_prim_op(name, func, argtypes):
             w_result = func(args_w)
             state.stack_push(state.heap.alloc(w_result))
     #
-    PrimOp.__name__ = 'PrimOp/%s' % name
+    PrimOp.__name__ = 'PrimOp:%s' % name
     return PrimOp()
 
 module = PrimOpManager()

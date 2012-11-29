@@ -135,7 +135,7 @@ class Parser(PackratParser):
         return {mk_ap(e, a)}
       | e1 = expr
         op = binop
-        e2 = expr
+        e2 = aexpr
         return {mk_binaryop(op, e1, e2)}
       | LETREC
         defn_list = defn+
@@ -207,7 +207,9 @@ class Parser(PackratParser):
 
 def read_program(source):
     try:
-        return Parser(source).program()
+        result = Parser(source).program()
+        assert result
+        return result
     except BacktrackException as e:
         if e.error:
             print e.error.nice_error_message(source=source)

@@ -1,4 +1,7 @@
-main = if true 2 lots_of_cal;
 
-lots_of_cal = twice twice twice twice id 3;
+sumAdd n s = if (n == 0) s (sumAdd (n - 1) (s + n));
+
+sumAdd2 n = n + (if (n == 0) 0 (sumAdd2 (n - 1)));
+
+main = sumAdd2 10;
 

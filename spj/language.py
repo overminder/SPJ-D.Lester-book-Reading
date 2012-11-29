@@ -66,9 +66,11 @@ class W_EAp(W_Expr):
         return '#<EAp %s %s>' % (self.f, self.a)
 
     def ppr(self, p):
+        p.write('(')
         p.write(self.f)
         p.write(' ')
         p.write(self.a)
+        p.write(')')
 
 # Just another var.
 class W_EPrimOp(W_EVar):
@@ -151,6 +153,13 @@ class PrettyPrinter(object):
             self.ob_cache[obj] = True
             obj.ppr(self)
             del self.ob_cache[obj]
+        elif isinstance(obj, list):
+            self.write('[')
+            for i, item in enumerate(obj):
+                if i != 0:
+                    self.write(', ')
+                self.write(item)
+            self.write(']')
         else:
             self.write_s(str(obj))
 
