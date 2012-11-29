@@ -15,6 +15,6 @@ def main(argv):
         print e.what
         return 1
 
-    print result
+    print result.to_s()
     return 0
 

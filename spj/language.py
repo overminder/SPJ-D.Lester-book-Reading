@@ -1,5 +1,7 @@
-from spj.utils import contextmanager
 from pypy.rlib.objectmodel import specialize
+
+from spj.utils import contextmanager
+from spj.errors import InterpError
 
 class W_Root(object):
     def __repr__(self):
@@ -132,6 +134,7 @@ class PrettyPrinter(object):
         self.indent_width = 0
         self.line_not_written = True
         self.line_width = 0
+        self.ob_cache = {}
 
     def write_s(self, s):
         self.line_width += len(s)
@@ -143,7 +146,11 @@ class PrettyPrinter(object):
             self.write_s(' ' * self.indent_width)
             self.line_not_written = False
         if isinstance(obj, W_Root):
+            if obj in self.ob_cache:
+                raise InterpError('XXX: Cycle in printing.')
+            self.ob_cache[obj] = True
             obj.ppr(self)
+            del self.ob_cache[obj]
         else:
             self.write_s(str(obj))
 

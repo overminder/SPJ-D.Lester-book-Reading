@@ -1,4 +1,4 @@
-main = 3 + add (id 1) 2;
+main = 1 + 2 + 3;
 
 add x y = x + y;
 

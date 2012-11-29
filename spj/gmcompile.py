@@ -2,22 +2,24 @@ from pypy.rlib.objectmodel import specialize
 
 from spj.errors import InterpError
 from spj.language import W_Root, W_EVar, W_EInt, W_EAp, W_ELet
-from spj.gmachine import (State, datHeap, Stat, NGlobal, Pushglobal, Unwind,
-        Slide, Pushint, Mkap, Push, Pop, Update, Alloc)
-
-mkap = Mkap()
-unwind = Unwind()
+from spj.gmachine import (State, datHeap, Stat, NGlobal, Pushglobal, unwind,
+        Slide, Pushint, mkap, Push, Pop, Update, Alloc, eval_instr)
 
 def compile(ast):
     (heap, env) = build_initial_heap(ast)
-    return State(initial_code, [], heap, env, Stat())
+    return State(initial_code, [], [], heap, env, Stat())
 
 # As usual.
-initial_code = [Pushglobal('main'), unwind]
+initial_code = [Pushglobal('main'), eval_instr]
 
 def build_initial_heap(ast):
     heap = datHeap
+    from spj.primitive import module
     env = {}
+    # add primitives
+    for name, sc_node in module.scs.items():
+        env[name] = heap.alloc(sc_node)
+    # add user-defined funcs
     for sc_defn in ast:
         emitter = SCCompiler(sc_defn)
         emitter.compile_sc()
@@ -31,7 +33,7 @@ class SCCompiler(object):
         self.sc_defn = sc_defn
 
     def make_sc_node(self):
-        print self.sc_defn, self.code
+        #print self.sc_defn, self.code
         return NGlobal(self.sc_defn.name,
                        len(self.sc_defn.args),
                        self.code)
