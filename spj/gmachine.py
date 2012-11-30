@@ -1,5 +1,6 @@
 from spj.errors import InterpError
 from spj.language import W_Root, ppr
+from spj.utils import write_str
 
 class Addr(W_Root):
     def __init__(self, node):
@@ -69,6 +70,19 @@ class State(W_Root):
         self.stat = stat
         self.sc_name = '(nosc)'
 
+    def inject_code(self, code):
+        # self.code: [passed..., (pc) rest...] -> [(pc) code..., rest...]
+        start = self.pc
+        assert start >= 0
+        self.code = code + self.code[start:]
+        self.pc = 0
+
+    def dump_save(self):
+        self.dump.append((self.pc, self.code, self.sc_name, self._stack))
+
+    def dump_restore(self):
+        (self.pc, self.code, self.sc_name, self._stack) = self.dump.pop()
+
     def stack_push(self, addr):
         assert isinstance(addr, Addr), addr.to_s()
         self._stack.append(addr)
@@ -122,7 +136,7 @@ class State(W_Root):
 
     def eval(self):
         while not self.is_final():
-            #ppr(self)
+            ppr(self)
             self.step()
         ppr(self)
         return self._stack[-1]
@@ -141,6 +155,9 @@ class State(W_Root):
 
 # G-machine instructions
 class Instr(W_Root):
+    def to_s(self):
+        return '#<Instr>'
+
     def dispatch(self, state):
         raise NotImplementedError
 
@@ -153,11 +170,7 @@ class Unwind(Instr):
         top = state.heap.lookup(top_addr)
         if isinstance(top, NInt):
             if state.dump:
-                (pc, code, sc_name, stack) = state.dump.pop()
-                state.pc = pc
-                state.code = code
-                state.sc_name = sc_name
-                state._stack = stack
+                state.dump_restore()
                 state.stack_push(top_addr)
             else:
                 return
@@ -168,8 +181,16 @@ class Unwind(Instr):
             state.stack_push(top.a1)
         elif isinstance(top, NGlobal):
             if len(state._stack) - 1 < top.arity:
-                raise InterpError('%s: not enough args for %s' %
-                                  (self.to_s(), top.to_s()))
+                if state.dump:
+                    # We are evaluating a sc with not enough args, which must
+                    # be caused by a partially applied primitive function.
+                    ak = state._stack[0]
+                    state.dump_restore()
+                    state.stack_push(ak)
+                    return
+                else:
+                    raise InterpError('%s: not enough args for %s' %
+                                      (self.to_s(), top.to_s()))
             # Prepare args and enter the new code
             args = take_right(state._stack[:-1], top.arity)
             for i, addr in enumerate(args):
@@ -306,8 +327,7 @@ class Alloc(Instr):
 class Eval(Instr):
     def dispatch(self, state):
         a = state.stack_pop()
-        dump_item = (state.pc, state.code, state.sc_name, state._stack)
-        state.dump.append(dump_item)
+        state.dump_save()
         state.pc = 0
         state.code = only_unwind
         state._stack = [a]
@@ -346,20 +366,80 @@ class Cond(Instr):
         top = state.heap.lookup(state.stack_pop())
         if not isinstance(top, NInt):
             raise InterpError('%s: type error' % self.to_s())
-        start = state.pc
-        assert start >= 0
         if top.ival == 1:
+            state.inject_code(self.then)
             # WTF
-            state.code = self.then + state.code[start:]
         elif top.ival == 0:
-            state.code = self.otherwise + state.code[start:]
+            state.inject_code(self.otherwise)
         else:
             raise InterpError('%s: %d seems to be not within bool range' % (
                 self.to_s(), top.ival))
-        state.pc = 0
 
     def to_s(self):
         return '#<Instr:Cond>'
+
+class Pack(Instr):
+    def __init__(self, tag, arity):
+        self.tag = tag
+        self.arity = arity
+
+    def dispatch(self, state):
+        if len(stace._stack) < self.arity:
+            raise InterpError('%s: not enough arguments' % self.to_s())
+        components = [None] * self.arity
+        for i in self.arity:
+            components[i] = state.stack_pop()
+        a = state.heap.alloc(NConstr(self.tag, components))
+        state.stack_push(a)
+
+    def to_s(self):
+        return '#<Instr:Pack %d %d>' % (self.tag, self.arity)
+
+class CaseJump(Instr):
+    def __init__(self, cases):
+        self.cases = cases # [(int, [Instr])]
+
+    def dispatch(self, state):
+        n = state.heap.lookup(state._stack[-1])
+        if not isinstance(n, NConstr):
+            raise InterpError('%s: %s is not a NConstr' % (
+                self.to_s(), n.to_s()))
+        for tag, code in self.cases:
+            if n.tag == tag:
+                state.inject_code(code)
+                return
+        raise InterpError('%s: no match' % self.to_s())
+
+    def to_s(self):
+        return '#<CaseJump -> %d>' % len(self.cases)
+
+class Split(Instr):
+    def __init__(self, arity):
+        self.arity = arity
+
+    def dispatch(self, state):
+        a = state.stack_pop()
+        n = state.heap.lookup(a)
+        if not isinstance(n, NConstr):
+            raise InterpError('%s: %s is not a NConstr' % (
+                self.to_s(), n.to_s()))
+        if len(n.components) != self.arity:
+            raise InterpError('%s: arity mismatch, got %s'
+                    % (self.to_s(), n.to_s()))
+        for i in xrange(self.arity - 1, -1, -1):
+            stack.stack_push(n.components[i])
+
+    def to_s(self):
+        return '#<Split %d>' % self.i
+
+class Print(Instr):
+    def dispatch(self, state):
+        n = state.heap.lookup(state.stack_pop())
+        assert isinstance(n, NInt)
+        write_str(str(n.ival))
+
+    def to_s(self):
+        return '#<Print>'
 
 # G-machine nodes
 class Node(W_Root):
@@ -388,10 +468,10 @@ class NGlobal(Node):
         self.code = code
 
     def to_s(self):
-        return '#<GmGlobal %s>' % self.name
+        return '#<GmNGlobal %s>' % self.name
 
     def ppr(self, p):
-        p.writeln('#<GmGlobal %s arity=%d>' % (self.name, self.arity))
+        p.writeln('#<GmNGlobal %s arity=%d>' % (self.name, self.arity))
         with p.block(2):
             p.write('Code: ')
             p.writeln(self.code)
@@ -403,14 +483,14 @@ class NIndirect(Node):
 
     def to_s(self):
         if not self.addr:
-            return '#<GmIndirect (nil)>'
+            return '#<GmNIndirect (nil)>'
         elif self.addr.deref() is self:
-            return '#<GmIndirect (loop)>'
+            return '#<GmNIndirect (loop)>'
         else:
-            return '#<GmIndirect -> %s>' % self.addr.to_s()
+            return '#<GmNIndirect -> %s>' % self.addr.to_s()
 
     def ppr(self, p):
-        p.write('#<GmIndirect -> ')
+        p.write('#<GmNIndirect -> ')
         if not self.addr:
             p.write('(nil)')
         elif self.addr.deref() is self:
@@ -418,6 +498,14 @@ class NIndirect(Node):
         else:
             p.write(self.addr)
         p.write('>')
+
+class NConstr(Node):
+    def __init__(self, tag, components):
+        self.tag = tag
+        self.components = components
+
+    def to_s(self):
+        return '#<GmNConstr %d:%d>' % (self.tag, len(self.components))
 
 null_node = NIndirect(null_addr)
 

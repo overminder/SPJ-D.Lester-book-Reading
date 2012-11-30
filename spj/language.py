@@ -129,6 +129,42 @@ class W_EConstr(W_Expr):
     def ppr(self, p):
         p.write('Pack{%d, %d}' % (self.tag, self.arity))
 
+class W_EAlt(W_Expr):
+    def __init__(self, tag, components, body):
+        self.tag = tag
+        self.arity = len(components)
+        self.components = components
+        self.body = body
+
+    def to_s(self):
+        return '#<W_EAlt %d:%d>' % (self.tag, self.arity)
+
+    def ppr(self, p):
+        p.write('<%d>' % self.tag)
+        if self.arity:
+            p.write(' ')
+            p.write(' '.join(self.components))
+        p.write(' -> ')
+        p.write(self.body)
+        p.write(';')
+
+class W_ECase(W_Expr):
+    def __init__(self, expr, alts):
+        self.expr = expr
+        self.nalts = len(alts)
+        self.alts = alts
+
+    def to_s(self):
+        return '#<W_ECase %s with %d alts>' % (self.expr.to_s(), self.nalts)
+
+    def ppr(self, p):
+        p.write('case ')
+        p.write(self.expr)
+        p.writeln(' of')
+        with p.block(2):
+            for alt in self.alts:
+                p.writeln(alt)
+
 # ppr
 class PrettyPrinter(object):
     def __init__(self, stream):

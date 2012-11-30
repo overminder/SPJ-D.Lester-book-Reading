@@ -19,6 +19,12 @@ def mk_int(i):
 def mk_ap(f, a):
     return language.W_EAp(f, a)
 
+def mk_alt(tag, components, body):
+    return language.W_EAlt(tag, components, body)
+
+def mk_case(expr, alts):
+    return language.W_ECase(expr, alts)
+
 def mk_defn(v, e):
     return pair(v, e)
 
@@ -61,7 +67,7 @@ class Parser(PackratParser):
         IGNORE*
         `,`;
 
-    DEF_BREAK:
+    SEMICOLON:
         IGNORE*
         `;`;
 
@@ -95,10 +101,14 @@ class Parser(PackratParser):
 
     ARROW:
         IGNORE*
-        `->`;
+        '->';
+
+    RESERVED:
+        LET | LETREC | IN | CASE | OF | PACK;
 
     VARNAME:
         IGNORE*
+        !RESERVED
         `[_a-z][_a-zA-Z0-9']*`;
 
     INT:
@@ -126,18 +136,11 @@ class Parser(PackratParser):
         lhs = VARNAME+
         EQUALS
         rhs = expr
-        DEF_BREAK+
+        SEMICOLON+
         return {mk_scdefn(lhs, rhs)};
 
     expr:
-        e = expr
-        a = aexpr
-        return {mk_ap(e, a)}
-      | e1 = expr
-        op = binop
-        e2 = aexpr
-        return {mk_binaryop(op, e1, e2)}
-      | LETREC
+        LETREC
         defn_list = defn+
         IN
         e0 = expr
@@ -147,18 +150,35 @@ class Parser(PackratParser):
         IN
         e0 = expr
         return {mk_let(defn_list, e0, False)}
+      | CASE
+        e = expr
+        OF
+        alts = alt+
+        return {mk_case(e, alts)}
       | LAMBDA
         lhs = VARNAME+
         ARROW
         rhs = expr
         return {mk_lambda(lhs, rhs)}
+      | e = expr
+        a = aexpr
+        return {mk_ap(e, a)}
+      | e1 = expr
+        op = binop
+        e2 = aexpr
+        return {mk_binaryop(op, e1, e2)}
       | aexpr;
+
+    caseexpr:
+        CASE
+        expr
+        OF;
 
     defn:
         v0 = VARNAME
         EQUALS
         e0 = expr
-        DEF_BREAK+
+        SEMICOLON+
         return {mk_defn(v0, e0)};
 
     aexpr:
@@ -198,6 +218,16 @@ class Parser(PackratParser):
     boolop:
         IGNORE* '&&'
       | IGNORE* '||';
+
+    alt:
+        IGNORE* '<'
+        tag = INT
+        IGNORE* '>'
+        components = VARNAME*
+        ARROW
+        body = expr
+        SEMICOLON
+        return {mk_alt(tag.as_int(), components, body)};
 
     program:
         c = scdefn+
