@@ -53,10 +53,13 @@ class State(W_Root):
     def frame_ref(self, n):
         return self.frameptr[n]
 
-    def mk_frameptr(self, nitems):
+    def frame_put(self, n, cl):
+        self.frameptr[n] = cl
+
+    def mk_frameptr(self, framesize, nargs):
         self.stat.ntakes += 1
-        tup_w = [None] * nitems
-        for i in xrange(nitems):
+        tup_w = [None] * framesize
+        for i in xrange(nargs):
             tup_w[i] = self.stack_pop()
         self.frameptr = tup_w
 
@@ -101,7 +104,7 @@ class State(W_Root):
 
     def eval(self):
         while not self.is_final():
-            #ppr(self)
+            ppr(self)
             self.step()
         ppr(self)
         return self.vstack[-1]
@@ -140,16 +143,31 @@ class Instr(W_Root):
         return '#<Instr>'
 
 class Take(Instr):
-    def __init__(self, n):
-        self.n = n
+    def __init__(self, framesize, nargs=-1):
+        self.framesize = framesize
+        if nargs == -1: # the same as framesize
+            self.nargs = framesize
+        else:
+            self.nargs = nargs
 
     def dispatch(self, state):
-        if self.n > len(state.stack):
+        if self.nargs > len(state.stack):
             raise InterpError('%s: too few arguments' % self.to_s())
-        state.mk_frameptr(self.n)
+        state.mk_frameptr(self.framesize, self.nargs)
 
     def to_s(self):
-        return '#<Take %d>' % self.n
+        return '#<Take %d %d>' % (self.framesize, self.nargs)
+
+class Move(Instr):
+    def __init__(self, i):
+        self.i = i
+
+    def dispatch(self, state):
+        cl = state.stack_pop()
+        state.frame_put(self.i, cl)
+
+    def to_s(self):
+        return '#<Move %d>' % self.i
 
 class PushArg(Instr):
     def __init__(self, k):

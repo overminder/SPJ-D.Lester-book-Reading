@@ -1,13 +1,13 @@
 from spj.errors import InterpError
-from spj.language import W_Root, W_EAp, W_EInt, W_EVar, ppr
+from spj.language import W_Root, W_EAp, W_EInt, W_EVar, W_ELet, ppr
 from spj.timrun import (State, Take, Enter, Return, PushInt, PushLabel,
-                        PushArg, PushCode, PushVInt, Cond, Closure)
+                        PushArg, PushCode, PushVInt, Move, Cond, Closure)
 from spj.primitive import module
 
 def compile(prog):
     cc = ProgramCompiler()
     cc.compile_program(prog)
-    #ppr(cc)
+    ppr(cc)
 
     initcode = [PushLabel('main'), Enter()]
     initstack = [Closure('<init>', [], None)]
@@ -36,7 +36,7 @@ class ProgramCompiler(W_Root):
 
     def compile_program(self, prog):
         for sc in prog:
-            cc = Compiler(self, sc.name)
+            cc = Compiler(self, sc.name, framesize=sc.arity)
             cc.compile_sc(sc)
             self.globalenv[sc.name] = cc.code
 
@@ -46,22 +46,41 @@ class ProgramCompiler(W_Root):
         return i
 
 class Compiler(object):
-    def __init__(self, progcc, name='?', initcode=None):
+    def __init__(self, progcc, name='?', initcode=None, framesize=0):
         self.progcc = progcc
         self.name = name
         if initcode is None:
             self.code = []
         else:
             self.code = initcode
+        self.framesize = framesize
 
     def emit(self, instr):
         self.code.append(instr)
 
+    def emit_move(self, addr_mode):
+        if isinstance(addr_mode, Arg):
+            self.emit(Move(addr_mode.ival))
+        elif isinstance(addr_mode, IndirectArg):
+            self.emit(Move(addr_mode.ival))
+        else:
+            assert 0
+
+    def emit_push(self, addr_mode):
+        if isinstance(addr_mode, Arg):
+            self.emit(PushArg(addr_mode.ival))
+        elif isinstance(addr_mode, IndirectArg):
+            co = [PushArg(addr_mode.ival), Enter()]
+            self.emit(PushCode(self.progcc.add_code(co)))
+        elif isinstance(addr_mode, Label):
+            self.emit(PushLabel(addr_mode.name))
+        else:
+            assert 0
+
     def compile_sc(self, sc):
-        if sc.arity != 0:
-            self.emit(Take(sc.arity))
         local_env = mk_func_env(sc.args)
         self.compile_r(sc.body, local_env)
+        self.code = [Take(self.framesize, sc.arity)] + self.code
 
     # Compile apply e to args (sort of like unwind)
     def compile_r(self, expr, env):
@@ -74,6 +93,26 @@ class Compiler(object):
         elif isinstance(expr, W_EInt) or isinstance(expr, W_EVar):
             self.compile_a(expr, env)
             self.emit(Enter())
+        elif isinstance(expr, W_ELet):
+            new_env = env.copy()
+            if expr.isrec:
+                rec_env = new_env.copy()
+                for i, (name, e) in enumerate(expr.defns):
+                    frameslot = self.framesize
+                    self.framesize += 1
+                    new_env[name] = Arg(frameslot)
+                    rec_env[name] = IndirectArg(frameslot)
+                for i, (name, e) in enumerate(expr.defns):
+                    self.compile_a(e, rec_env)
+                    self.emit_move(new_env[name])
+            else:
+                for i, (name, e) in enumerate(expr.defns):
+                    self.compile_a(e, env)
+                    frameslot = self.framesize
+                    self.framesize += 1
+                    new_env[name] = Arg(frameslot)
+                    self.emit_move(new_env[name])
+            self.compile_r(expr.expr, new_env)
         else:
             raise InterpError('compile_r(%s): not implemented' % expr.to_s())
 
@@ -83,9 +122,9 @@ class Compiler(object):
             self.emit(PushInt(expr.ival))
         elif isinstance(expr, W_EVar):
             if expr.name in env:
-                self.emit(PushArg(env[expr.name]))
+                self.emit_push(env[expr.name])
             else:
-                self.emit(PushLabel(expr.name))
+                self.emit_push(Label(expr.name))
         elif isinstance(expr, W_EAp):
             # Create a shared closure
             cc = Compiler(self.progcc, expr.to_s())
@@ -147,10 +186,24 @@ class Compiler(object):
             self.compile_r(expr, env)
         return False
 
+class AddressMode(object):
+    pass
+
+class Arg(AddressMode):
+    def __init__(self, ival):
+        self.ival = ival
+
+class IndirectArg(AddressMode):
+    def __init__(self, ival):
+        self.ival = ival
+
+class Label(AddressMode):
+    def __init__(self, name):
+        self.name = name
 
 def mk_func_env(args):
     d = {}
     for i, name in enumerate(args):
-        d[name] = i
+        d[name] = Arg(i)
     return d
 
