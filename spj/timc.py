@@ -45,7 +45,8 @@ class Compiler(object):
         self.code.append(instr)
 
     def compile_sc(self, sc):
-        self.emit(Take(sc.arity))
+        if sc.arity != 0:
+            self.emit(Take(sc.arity))
         local_env = mk_func_env(sc.args)
         self.compile_r(sc.body, local_env)
 

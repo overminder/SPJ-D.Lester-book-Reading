@@ -8,6 +8,7 @@ class Stat(W_Root):
         self.npushes = 0
         self.ntakes = 0
         self.nclosure_made = 0
+        self.max_stackdepth = 0
 
     def ppr(self, p):
         p.writeln('TIM Stat @step %d:' % self.nsteps)
@@ -16,6 +17,7 @@ class Stat(W_Root):
             p.writeln('Number of enters: %d' % self.nenters)
             p.writeln('Number of pushes: %d' % self.npushes)
             p.writeln('Number of closures made: %d' % self.nclosure_made)
+            p.writeln('Max stackdepth: %d' % self.max_stackdepth)
 
 class State(W_Root):
     def __init__(self, initcode, frameptr, stack, globalenv, codefrags):
@@ -57,6 +59,8 @@ class State(W_Root):
     def stack_push(self, cl):
         self.stat.npushes += 1
         self.stack.append(cl)
+        self.stat.max_stackdepth = max(len(self.stack),
+                                       self.stat.max_stackdepth)
 
     def mk_closure(self, name, code, frameptr):
         self.stat.nclosure_made += 1
