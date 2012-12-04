@@ -103,13 +103,17 @@ class Parser(PackratParser):
         IGNORE*
         '->';
 
-    RESERVED:
-        LET | LETREC | IN | CASE | OF | PACK;
-
     VARNAME:
         IGNORE*
-        !RESERVED
-        `[_a-z][_a-zA-Z0-9']*`;
+        name = `[_a-z][_a-zA-Z0-9']*`
+        if {name not in ['let', 'letrec', 'in', 'case', 'of', 'pack']}
+        return {name}
+      | IGNORE*
+        '('
+        name = binop
+        IGNORE*
+        ')'
+        return {name};
 
     INT:
         IGNORE*
@@ -199,7 +203,7 @@ class Parser(PackratParser):
         return {e};
 
     binop:
-        relop | arithop | boolop;
+        relop | arithop | boolop | otherop;
 
     arithop:
         IGNORE* '+'
@@ -218,6 +222,9 @@ class Parser(PackratParser):
     boolop:
         IGNORE* '&&'
       | IGNORE* '||';
+
+    otherop:
+        IGNORE* '.';
 
     alt:
         IGNORE* '<'

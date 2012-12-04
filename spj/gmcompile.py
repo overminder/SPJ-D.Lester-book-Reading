@@ -2,9 +2,11 @@ from pypy.rlib.objectmodel import specialize
 
 from spj.utils import write_str
 from spj.errors import InterpError
-from spj.language import W_Root, W_EVar, W_EInt, W_EAp, W_ELet, ppr
+from spj.language import (W_Root, W_EVar, W_EInt, W_EAp, W_ELet, ppr,
+        W_EConstr, W_ECase, W_EAlt)
 from spj.gmachine import (State, datHeap, Stat, NGlobal, Pushglobal, unwind,
-        Slide, Pushint, mkap, Push, Pop, Update, Alloc, eval_instr, Cond)
+        Slide, Pushint, mkap, Push, Pop, Update, Alloc, eval_instr, Cond,
+        Pack, Split, CaseJump)
 
 def compile(ast):
     (heap, env) = build_initial_heap(ast)
@@ -87,6 +89,15 @@ class SCCompiler(object):
                 return
             elif self.try_compile_if(expr, local_env):
                 return
+            elif self.try_compile_constr(expr, local_env):
+                return
+        elif isinstance(expr, W_ECase):
+            self.compile_e(expr.expr, local_env)
+            alt_codes = []
+            alt_codes = self.compile_d(expr.alts, local_env)
+            self.emit(CaseJump(alt_codes))
+            return
+
         # Otherwise
         self.compile_c(expr, local_env)
         self.emit(eval_instr)
@@ -98,7 +109,7 @@ class SCCompiler(object):
             args.append(expr.a)
             expr = expr.f
         if not isinstance(expr, W_EVar):
-            return False # is this case possible?
+            return False
         if expr.name != 'if':
             return False # not a if
         if len(args) != 3:
@@ -128,18 +139,35 @@ class SCCompiler(object):
             args.append(expr.a)
             expr = expr.f
         if not isinstance(expr, W_EVar):
-            return False # is this case possible?
+            return False
         if expr.name not in prim_ops:
             return False # no such instr
         instr = prim_ops[expr.name]
-        if instr.get_arity() != len(args): # type check fails?
-            raise InterpError('try_compile_prim_ap(%s): argcount mismatch.' % 
-                    instr.to_s())
+        if instr.get_arity() != len(args):
+            # partially applied, should use prim func instead.
+            # XXX: \x -> x + 1 is better than ((+) 1)
+            return False
         # stack[..] -> [.., arg.n, ..., arg.1]
         for arg in args:
             self.compile_e(arg, env)
             env = arg_offset(1, env) # this
         self.emit(instr)
+        return True
+
+    def try_compile_constr(self, expr, env):
+        args = [] # [arg.n, arg.n-1, ..., arg.1]
+        while isinstance(expr, W_EAp):
+            # unwind the spine and get the args
+            args.append(expr.a)
+            expr = expr.f
+        if not isinstance(expr, W_EConstr):
+            return False
+        if len(args) != expr.arity:
+            raise InterpError('%s: arity mismatch' % expr.to_s())
+        for arg in args:
+            self.compile_c(arg, env)
+            env = arg_offset(1, env)
+        self.emit(Pack(expr.tag, expr.arity))
         return True
 
     # lazy compilation scheme
@@ -178,6 +206,25 @@ class SCCompiler(object):
             self.emit(Slide(ndefns))
         else:
             raise InterpError('compile_c(%s) not implemented' % expr.to_s())
+
+    def compile_d(self, alts, env):
+        # -> [(int, [code])]
+        saved_code = self.code
+        case_codes = []
+        for alt in alts:
+            self.code = []
+            self.compile_a(alt, env)
+            case_codes.append((alt.tag, self.code))
+        self.code = saved_code
+        return case_codes
+
+    def compile_a(self, alt, env):
+        self.emit(Split(alt.arity))
+        new_env = arg_offset(alt.arity, env)
+        for i, v in enumerate(alt.components):
+            new_env[v] = i
+        self.compile_e(alt.body, new_env)
+        self.emit(Slide(alt.arity))
 
 def arg_offset(i, env):
     d = {}

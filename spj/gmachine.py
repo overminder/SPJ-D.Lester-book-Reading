@@ -174,6 +174,12 @@ class Unwind(Instr):
                 state.stack_push(top_addr)
             else:
                 return
+        elif isinstance(top, NConstr):
+            if state.dump:
+                state.dump_restore()
+                state.stack_push(top_addr)
+            else:
+                return
         elif isinstance(top, NAp):
             state.pc -= 1 # continue to unwind. we choose not to change
                           # state.code since that may hinder the 
@@ -384,10 +390,10 @@ class Pack(Instr):
         self.arity = arity
 
     def dispatch(self, state):
-        if len(stace._stack) < self.arity:
+        if len(state._stack) < self.arity:
             raise InterpError('%s: not enough arguments' % self.to_s())
         components = [None] * self.arity
-        for i in self.arity:
+        for i in xrange(self.arity):
             components[i] = state.stack_pop()
         a = state.heap.alloc(NConstr(self.tag, components))
         state.stack_push(a)
@@ -411,7 +417,7 @@ class CaseJump(Instr):
         raise InterpError('%s: no match' % self.to_s())
 
     def to_s(self):
-        return '#<CaseJump -> %d>' % len(self.cases)
+        return '#<CaseJump [%d]>' % len(self.cases)
 
 class Split(Instr):
     def __init__(self, arity):
@@ -427,10 +433,10 @@ class Split(Instr):
             raise InterpError('%s: arity mismatch, got %s'
                     % (self.to_s(), n.to_s()))
         for i in xrange(self.arity - 1, -1, -1):
-            stack.stack_push(n.components[i])
+            state.stack_push(n.components[i])
 
     def to_s(self):
-        return '#<Split %d>' % self.i
+        return '#<Split %d>' % self.arity
 
 class Print(Instr):
     def dispatch(self, state):
@@ -440,6 +446,26 @@ class Print(Instr):
 
     def to_s(self):
         return '#<Print>'
+
+class PrintData(Instr):
+    def dispatch(self, state):
+        n = state.heap.lookup(state.stack_pop())
+        assert isinstance(n, NConstr)
+        write_str('(<%d>' % n.tag)
+        for i, addr in enumerate(n.components):
+            node = state.heap.lookup(addr)
+            write_str(' %s' % node.to_s())
+        write_str(')')
+
+    def to_s(self):
+        return '#<PrintData>'
+
+class PrintNL(Instr):
+    def dispatch(self, state):
+        write_str('\n')
+
+    def to_s(self):
+        return '#<PrintNL>'
 
 # G-machine nodes
 class Node(W_Root):

@@ -45,7 +45,7 @@ def mk_prim_op(name, func, argtypes):
 
 module = PrimOpManager()
 
-def register(name, argtypes):
+def register(name, argtypes, make_func=True):
     "NOT_RPYTHON"
     # MAGIC!
     arity = len(argtypes)
@@ -66,16 +66,17 @@ def register(name, argtypes):
             return box(result)
         prim_op = mk_prim_op(name, wrapped_func, argtypes)
         module.add_op(name, prim_op)
-        if argtypes == [NInt, NInt]:
-            sc = NGlobal(name, 2, [Push(1), eval_instr, Push(1),
-                                   eval_instr, prim_op, Update(2),
-                                   Pop(2), unwind])
-        elif argtypes == [NInt]:
-            sc = NGlobal(name, 1, [Push(0), eval_instr, prim_op,
-                                   Update(1), Pop(1), unwind])
-        else:
-            assert 0, 'dont know how to make sc for %s' % prim_op.to_s()
-        module.add_sc(name, sc)
+        if make_func:
+            if argtypes == [NInt, NInt]:
+                sc = NGlobal(name, 2, [Push(1), eval_instr, Push(1),
+                                       eval_instr, prim_op, Update(2),
+                                       Pop(2), unwind])
+            elif argtypes == [NInt]:
+                sc = NGlobal(name, 1, [Push(0), eval_instr, prim_op,
+                                       Update(1), Pop(1), unwind])
+            else:
+                assert 0, 'dont know how to make sc for %s' % prim_op.to_s()
+            module.add_sc(name, sc)
         return prim_op
     return decorator
 
