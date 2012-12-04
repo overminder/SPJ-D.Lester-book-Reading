@@ -1,5 +1,8 @@
 
-main = twice twice id 3;
+main = myid1 1;
+
+myid = s k k;
+myid1 = myid myid;
 
 id x = x;
 

@@ -17,6 +17,7 @@ class W_ScDefn(W_Root):
     def __init__(self, name, args, body):
         self.name = name
         self.args = args
+        self.arity = len(args)
         self.body = body
 
     def to_s(self):
@@ -180,6 +181,9 @@ class PrettyPrinter(object):
 
     @specialize.argtype(1)
     def write(self, obj):
+        if obj is None:
+            self.write_s('None')
+            return
         if self.line_not_written:
             self.write_s(' ' * self.indent_width)
             self.line_not_written = False
