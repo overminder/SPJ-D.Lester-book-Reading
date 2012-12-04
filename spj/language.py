@@ -181,6 +181,7 @@ class PrettyPrinter(object):
 
     @specialize.argtype(1)
     def write(self, obj):
+        # Dict shall not be used here
         if obj is None:
             self.write_s('None')
             return
@@ -200,8 +201,21 @@ class PrettyPrinter(object):
                     self.write(', ')
                 self.write(item)
             self.write(']')
+        elif isinstance(obj, str):
+            self.write_s(obj)
         else:
             self.write_s(str(obj))
+
+    @specialize.argtype(1)
+    def write_dict(self, obj):
+        self.write('{')
+        for i, (k, v) in enumerate(obj):
+            if i != 0:
+                self.writeln(',')
+            self.write(k)
+            self.write(': ')
+            self.write(v)
+        self.write('}')
 
     def indent(self, val):
         self.indent_width += val
@@ -209,7 +223,11 @@ class PrettyPrinter(object):
     def dedent(self, val):
         self.indent(-val)
 
-    def newline(self):
+    def newline(self, n=1):
+        for i in xrange(n):
+            self._newline()
+
+    def _newline(self):
         self.write_s('\n')
         self.line_width = 0
         self.line_not_written = True

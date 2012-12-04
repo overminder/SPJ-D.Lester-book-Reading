@@ -1,10 +1,8 @@
-main = 2 - 1;
+main = four + four;
+
+four = 2 * 2;
+
+add1 x = x + 1;
 
 add x y = x + y;
-
-compose f g x = f (g x);
-
-id x = x;
-
-twice f = compose f f;
 

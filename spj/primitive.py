@@ -5,18 +5,28 @@ from pypy.rlib.unroll import unrolling_iterable
 
 from spj.errors import InterpError
 #from spj.utils import write_str
-from spj.gmachine import (BasePrimOp, Node, NInt, NGlobal, eval_instr,
-                          unwind, Push, Pop, Update, Cond)
+from spj.timrun import (BasePrimOp, Take, PushCode, PushArg, Enter,
+                        Return, Cond, W_Value, W_Int)
 
 class PrimOpManager(object):
     def __init__(self):
+        "NOT_RPYTHON"
         self.ops = {}
         self.scs = {}
+        self.codefrags = []
 
     def add_op(self, name, prim_op):
+        "NOT_RPYTHON"
         self.ops[name] = prim_op
 
+    def add_codefrag(self, code):
+        "NOT_RPYTHON"
+        i = len(self.codefrags)
+        self.codefrags.append(code)
+        return i
+
     def add_sc(self, name, sc):
+        "NOT_RPYTHON"
         self.scs[name] = sc
 
 def mk_prim_op(name, func, argtypes):
@@ -26,7 +36,7 @@ def mk_prim_op(name, func, argtypes):
     #
     class PrimOp(BasePrimOp):
         def to_s(self):
-            return '#<Instr:%s>' % name
+            return '#<PrimOp:%s>' % name
 
         def get_arity(self):
             return arity
@@ -38,7 +48,7 @@ def mk_prim_op(name, func, argtypes):
                 if not isinstance(w_arg, argtype):
                     raise InterpError('%s: type error' % self.to_s())
             w_result = func(args_w)
-            state.stack_push(state.heap.alloc(w_result))
+            return w_result
     #
     PrimOp.__name__ = 'PrimOp:%s' % name
     return PrimOp()
@@ -67,59 +77,70 @@ def register(name, argtypes, make_func=True):
         prim_op = mk_prim_op(name, wrapped_func, argtypes)
         module.add_op(name, prim_op)
         if make_func:
-            if argtypes == [NInt, NInt]:
-                sc = NGlobal(name, 2, [Push(1), eval_instr, Push(1),
-                                       eval_instr, prim_op, Update(2),
-                                       Pop(2), unwind])
-            elif argtypes == [NInt]:
-                sc = NGlobal(name, 1, [Push(0), eval_instr, prim_op,
-                                       Update(1), Pop(1), unwind])
+            if argtypes == [W_Int, W_Int]:
+                auxcode1 = [prim_op, Return()]
+                i1 = module.add_codefrag(auxcode1)
+                auxcode2 = [PushCode(i1), PushArg(0), Enter()]
+                i2 = module.add_codefrag(auxcode2)
+                sc = [Take(2), PushCode(i2), PushArg(1), Enter()]
+            elif argtypes == [W_Int]:
+                auxcode1 = [prim_op, Return()]
+                i1 = module.add_codefrag(auxcode1)
+                sc = [Take(1), PushCode(i1), PushArg(0), Enter()]
             else:
                 assert 0, 'dont know how to make sc for %s' % prim_op.to_s()
             module.add_sc(name, sc)
         return prim_op
     return decorator
 
-def make_unboxer(node_type):
+def make_unboxer(value_type):
     "NOT_RPYTHON"
-    if node_type == NInt:
-        return lambda node: node.ival
-    if node_type == Node:
-        return lambda node: node
+    if value_type == W_Int:
+        return lambda w_int: w_int.ival
+    if value_type == W_Value:
+        return lambda w_val: w_val
     else:
-        assert 0, 'dont know how to unwrap this type: %s' % node_type
+        assert 0, 'dont know how to unwrap this type: %s' % value_type
 
 @specialize.argtype(0)
 def box(v):
     if isinstance(v, int): # including bool
-        return NInt(v)
-    elif isinstance(v, Node):
+        return W_Int(v)
+    elif isinstance(v, W_Value):
         return v
     assert 0
 
-def mk_binary_op(name, py_op, node_types):
+def mk_binary_op(name, py_op, value_types):
     "NOT_RPYTHON"
     code = '''
 def wrap(a, b):
-    return a %(py_op)s b
-''' % locals()
+    return a %(py_op)s b ''' % locals()
     d = {}
     exec code in d
     f = d['wrap']
     f._always_inline_ = True
-    register(name, node_types)(f)
+    register(name, value_types)(f)
 
 for name in '+ - * / < <= > >= =='.split():
-    mk_binary_op(name, name, [NInt, NInt])
+    mk_binary_op(name, name, [W_Int, W_Int])
 
-mk_binary_op('/=', '!=', [NInt, NInt])
+mk_binary_op('/=', '!=', [W_Int, W_Int])
 
-@register('negate', [NInt])
+@register('negate', [W_Int])
 def int_negate(a):
     return -a
 
-# if
-module.add_sc('if', NGlobal('if', 3, [Push(0), eval_instr, Cond([Push(1)],
-                                                                [Push(2)]),
-                                      Update(3), Pop(3), unwind]))
+# add if
+def add_if():
+    true_code = [PushArg(1), Enter()]
+    false_code = [PushArg(2), Enter()]
+    i1 = module.add_codefrag(true_code)
+    i2 = module.add_codefrag(false_code)
+
+    cond_code = [Cond(i1, i2)]
+    i0 = module.add_codefrag(cond_code)
+
+    sc = [Take(3), PushCode(i0), PushArg(0), Enter()]
+    module.add_sc('if', sc)
+add_if()
 
