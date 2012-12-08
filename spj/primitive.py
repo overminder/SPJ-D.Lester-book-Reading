@@ -6,7 +6,7 @@ from pypy.rlib.unroll import unrolling_iterable
 from spj.errors import InterpError
 #from spj.utils import write_str
 from spj.gmachine import (BasePrimOp, Node, NInt, NGlobal, eval_instr,
-                          unwind, Push, Pop, Update, Cond)
+                          unwind, Push, Pop, Update, Cond, Jump)
 
 class PrimOpManager(object):
     def __init__(self):
@@ -119,7 +119,7 @@ def int_negate(a):
     return -a
 
 # if
-module.add_sc('if', NGlobal('if', 3, [Push(0), eval_instr, Cond([Push(1)],
-                                                                [Push(2)]),
+module.add_sc('if', NGlobal('if', 3, [Push(0), eval_instr, Cond(2),
+                                      Push(1), Jump(1), Push(2),
                                       Update(3), Pop(3), unwind]))
 
