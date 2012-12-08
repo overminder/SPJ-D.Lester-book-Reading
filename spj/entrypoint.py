@@ -10,8 +10,8 @@ def main(argv):
     source = stdin.readall()
     try:
         ast = read_program(source)
-        code = compile(ast)
-        result = code.eval()
+        state = compile(ast)
+        result = state.eval().unwrap()
     except InterpError as e:
         print e.what
         return 1

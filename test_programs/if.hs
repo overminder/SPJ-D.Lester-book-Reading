@@ -1,3 +1,5 @@
 
-main = if 1 1 2;
+main = myIf 0 1 2;
+
+myIf = if;
 
