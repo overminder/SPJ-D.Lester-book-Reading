@@ -6,7 +6,7 @@ from spj.language import (W_Root, W_EVar, W_EInt, W_EAp, W_ELet, ppr,
         W_EConstr, W_ECase, W_EAlt)
 from spj.gmachine import (State, datHeap, Stat, NGlobal, Pushglobal, unwind,
         Slide, Pushint, mkap, Push, Pop, Update, Alloc, eval_instr, Cond,
-        Pack, Split, CaseJump)
+        Jump, Pack, Split, CaseJump)
 
 def compile(ast):
     (heap, env) = build_initial_heap(ast)
@@ -27,7 +27,7 @@ def build_initial_heap(ast):
         emitter = SCCompiler(sc_defn)
         emitter.compile_sc()
         sc_node = emitter.make_sc_node()
-        ppr(sc_node)
+        #ppr(sc_node)
         env[sc_node.name] = heap.alloc(sc_node)
     return (heap, env)
 
@@ -117,18 +117,24 @@ class SCCompiler(object):
                     expr.to_s())
         #
         self.compile_e(args[2], env) # get the cond
-        saved_code = self.code
+        cond_instr = Cond(-1)
+        self.emit(cond_instr)
+        pc_after_cond = len(self.code)
 
-        self.code = [] # new code for e1
         self.compile_e(args[1], env) # compile the then
-        then_code = self.code
+        jump_instr = Jump(-1)
+        self.emit(jump_instr)
+        pc_before_else = len(self.code)
 
-        self.code = []
         self.compile_e(args[0], env) # compile the then
-        else_code = self.code
+        pc_after_else = len(self.code)
 
-        self.code = saved_code
-        self.emit(Cond(then_code, else_code))
+        # [eval-expr, Cond, eval-then, J->end, eval-else, PC]
+        # pc-after-cond = 2, pc-before-else = 4,
+        # pc-after-else = 5
+        # ^ Patch them.
+        cond_instr.offset = pc_before_else - pc_after_cond
+        jump_instr.offset = pc_after_else - pc_before_else
         return True
 
     def try_compile_prim_ap(self, expr, prim_ops, env):

@@ -136,9 +136,9 @@ class State(W_Root):
 
     def eval(self):
         while not self.is_final():
-            ppr(self)
+            #ppr(self)
             self.step()
-        ppr(self)
+        #ppr(self)
         return self._stack[-1]
 
     def is_final(self):
@@ -362,9 +362,8 @@ class BasePrimOp(Instr):
         raise NotImplementedError
 
 class Cond(Instr):
-    def __init__(self, then, otherwise):
-        self.then = then
-        self.otherwise = otherwise
+    def __init__(self, offset):
+        self.offset = offset
 
     def dispatch(self, state):
         if not state._stack:
@@ -373,16 +372,25 @@ class Cond(Instr):
         if not isinstance(top, NInt):
             raise InterpError('%s: type error' % self.to_s())
         if top.ival == 1:
-            state.inject_code(self.then)
-            # WTF
+            pass # just go on
         elif top.ival == 0:
-            state.inject_code(self.otherwise)
+            state.pc += self.offset
         else:
             raise InterpError('%s: %d seems to be not within bool range' % (
                 self.to_s(), top.ival))
 
     def to_s(self):
-        return '#<Instr:Cond>'
+        return '#<Instr:Cond %d>' % self.offset
+
+class Jump(Instr):
+    def __init__(self, offset):
+        self.offset = offset
+
+    def dispatch(self, state):
+        state.pc += self.offset
+
+    def to_s(self):
+        return '#<Instr:Jump %d>' % self.offset
 
 class Pack(Instr):
     def __init__(self, tag, arity):
