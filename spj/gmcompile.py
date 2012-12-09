@@ -127,8 +127,7 @@ class SCCompiler(object):
             self.emit_oparg(Op.SLIDE, ndefns)
             return
         elif isinstance(expr, W_EAp):
-            from spj.primitive import module
-            if self.try_compile_prim_ap(expr, module.ops, local_env):
+            if self.try_compile_prim_ap(expr, local_env):
                 return
             elif self.try_compile_if(expr, local_env):
                 return
@@ -168,7 +167,7 @@ class SCCompiler(object):
         self.emit_oparg(Op.JUMP, 0) # place holder again
         pc_before_else = len(self.code)
 
-        self.compile_e(args[0], env) # compile the then
+        self.compile_e(args[0], env) # compile the else
         pc_after_else = len(self.code)
 
         # [eval-expr, bb, Cond, eval-then, J->end, bb, eval-else, PC]
@@ -179,7 +178,7 @@ class SCCompiler(object):
         self.patch_i16(pc_before_else - 2, pc_after_else - pc_before_else)
         return True
 
-    def try_compile_prim_ap(self, expr, prim_ops, env):
+    def try_compile_prim_ap(self, expr, env):
         # return True if successfully compiled, or False otherwise
         args = [] # [arg.n, arg.n-1, ..., arg.1]
         while isinstance(expr, W_EAp):

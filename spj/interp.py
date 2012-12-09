@@ -4,7 +4,7 @@ from pypy.rlib.unroll import unrolling_iterable
 
 from spj.errors import InterpError
 
-STACKSIZE = 64 * 1024
+STACKSIZE = 8
 DUMPSIZE = 1024
 
 class Dump(object):
@@ -15,10 +15,9 @@ class Dump(object):
         self.stackitems = stackitems
 
 class State(object):
-    _virtualizable2_ = ['code', 'pc', 'stackptr', 'dumpptr']
-    #_virtualizable2_ = ['stack', 'stackptr', 'dump', 'dumpptr',
-    #                    'code', 'pc', 'env', 'names']
-    _immutable_fields_ = ['stack', 'dump', 'env', 'names']
+    _virtualizable2_ = ['code', 'pc', 'stackptr', 'dumpptr',
+                        'stack[*]', 'dump', 'env', 'names']
+    _immutable_fields_ = ['stack', 'dump', 'env', 'names[*]']
     def __init__(self, initcode, env=None, names=None):
         self.stack = [None] * STACKSIZE
         self.stackptr = 0 # first empty slot in the stack
@@ -30,26 +29,32 @@ class State(object):
         self.names = names[:]
 
     def push(self, addr):
-        self.stack[self.stackptr] = addr
-        self.stackptr += 1
+        index = self.stackptr
+        assert index >= 0
+        self.stack[index] = addr
+        self.stackptr = index + 1
 
     def pop(self):
         self.stackptr -= 1
-        res = self.stack[self.stackptr]
-        self.stack[self.stackptr] = None
+        index = self.stackptr
+        assert index >= 0
+        res = self.stack[index]
+        self.stack[index] = None
         return res
 
     def ref(self, i):
         assert i >= 0
-        if i >= self.stackptr:
-            raise InterpError('ref(%d): no such item')
-        return self.stack[self.stackptr - i - 1]
+        index = self.stackptr - i - 1
+        if index < 0:
+            raise InterpError('ref(%d): no such item' % i)
+        return self.stack[index]
 
     def setnth(self, i, addr):
         assert i >= 0
-        if i >= self.stackptr:
-            raise InterpError('setnth(%d): no such item')
-        self.stack[self.stackptr - i - 1] = addr
+        index = self.stackptr - i - 1
+        if index < 0:
+            raise InterpError('setnth(%d): no such item' % i)
+        self.stack[index] = addr
 
     @jit.unroll_safe
     def save_dump(self):
@@ -136,7 +141,7 @@ class State(object):
                 continue
             elif isinstance(top, NGlobal):
                 arity = top.arity
-                if self.stackptr - 1 < top.arity:
+                if self.stackptr - 1 < arity:
                     if self.dumpptr:
                         # We are evaluating a sc with not enough args,
                         # which must be caused by a partially applied
@@ -177,8 +182,7 @@ class State(object):
 
     def PUSH_GLOBAL(self):
         oparg = self.decode_i16()
-        name = read_name(self.names, oparg)
-        addr = read_env(self.env, name)
+        addr = read_env(self.env, self.names, oparg)
         self.push(addr)
 
     def PUSH_INT(self):
@@ -313,17 +317,12 @@ class NConstr(Node):
 
 null_node = NIndirect(None)
 
-#@jit.elidable
 def read_code(code, pc):
     return code[pc]
 
-#@jit.elidable
-def read_name(names, i):
-    return names[i]
-
-#@jit.elidable
-def read_env(env, name):
-    return env[name]
+@jit.elidable
+def read_env(env, names, i):
+    return env[names[i]]
 
 # more opcode definitions
 
@@ -355,7 +354,7 @@ def f(self):
     assert isinstance(rhs, NInt)
     result = NInt(lhs.ival %(py_rator)s rhs.ival)
     self.push(Addr(result)) '''
-        d = {'NInt': NInt, 'Addr': Addr} # THIS, since func capture theirs
+        d = {'NInt': NInt, 'Addr': Addr} # This, since func capture their
                                          # globals in Python.
         exec code % locals() in d
         f = d['f']
